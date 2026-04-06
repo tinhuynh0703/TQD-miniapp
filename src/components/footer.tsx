@@ -1,5 +1,3 @@
-import HorizontalDivider from "./horizontal-divider";
-import { useAtomValue } from "jotai";
 import TransitionLink from "./transition-link";
 import HomeIcon from "./icons/home";
 import ExploreIcon from "./icons/explore";
@@ -21,14 +19,14 @@ const NAV_ITEMS = [
     icon: ExploreIcon,
   },
   {
-    path: "/booking",
+    path: "/new",
     icon: () => (
       <BigPlusIcon className="-mt-4 shadow-lg shadow-highlight rounded-full" />
     ),
   },
   {
-    name: "Lịch khám",
-    path: "/schedule",
+    name: "Hoạt động",
+    path: "/activity",
     icon: ChatIcon,
   },
   {

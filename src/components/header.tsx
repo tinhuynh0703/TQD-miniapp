@@ -11,11 +11,15 @@ function ProfileHeader() {
 
   return (
     <div className="flex items-center justify-center space-x-3">
-      <img
-        src={userInfo.avatar}
-        className="rounded-full h-10 w-10 object-cover border border-white"
-      />
-      <div className="w-40 font-medium">{userInfo.name}</div>
+      {userInfo?.avatar ? (
+        <img
+          src={userInfo.avatar}
+          className="rounded-full h-10 w-10 object-cover border border-white"
+        />
+      ) : (
+        <div className="rounded-full h-10 w-10 bg-white/60 border border-white" />
+      )}
+      <div className="w-40 font-medium">{userInfo?.name ?? "Người dùng"}</div>
     </div>
   );
 }

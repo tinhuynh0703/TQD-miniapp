@@ -1,78 +1,224 @@
-import ArrowRightIcon from "@/components/icons/arrow-right";
-import { doctorsState } from "@/state";
-import { useAtomValue } from "jotai";
-import prescription from "@/static/services/prescription.svg";
-import calendar from "@/static/services/calendar.svg";
-import clipboard from "@/static/services/clipboard.svg";
-import heart from "@/static/services/heart.svg";
-import Section from "@/components/section";
-import { Action } from "./action";
-import { VisitedDoctor } from "./visited-doctor";
+import { useEffect, useState } from "react";
+import { authorize, getAccessToken, getUserInfo } from "zmp-sdk";
+import { getPhoneNumber } from "zmp-sdk/apis";
 
-function ProfilePage() {
-  const [d1, d2] = useAtomValue(doctorsState);
+/** Xin scope rồi lấy token — bắt buộc gọi authorize trước getAccessToken (Zalo từ 2026). */
+const getMyToken = async () => {
+  try {
+    // BƯỚC QUAN TRỌNG NHẤT: Xin quyền trước khi lấy Token
+    console.log("Đang xin quyền truy cập...");
+    await authorize({
+      scopes: ["scope.userInfo"],
+    });
+
+    // Sau khi authorize thành công, mới gọi lấy token
+    const accessToken = await getAccessToken();
+
+    if (accessToken) {
+      console.log("--- COPY TOKEN NÀY VAO POSTMAN ---");
+      console.log(accessToken);
+      console.log("---------------------------------");
+    } else {
+      console.log(
+        "Token vẫn null. Hãy kiểm tra trạng thái Login ở tab 'Phát triển'.",
+      );
+    }
+  } catch (error) {
+    console.error("Lỗi xác thực hoặc hệ thống:", error);
+    // Nếu lỗi là 'User cancel', nghĩa là bạn cần nhấn 'Cho phép' trên màn hình Simulator
+  }
+};
+type ZaloUserPayload = Record<string, any> & {
+  accessToken: string | null;
+};
+
+export default function ProfilePage() {
+  const [payload, setPayload] = useState<ZaloUserPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneResult, setPhoneResult] = useState<any>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+
+  const copyText = async (value: unknown, label: string) => {
+    const text =
+      typeof value === "string" ? value : JSON.stringify(value ?? {}, null, 2);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const el = document.createElement("textarea");
+        el.value = text;
+        el.setAttribute("readonly", "");
+        el.style.position = "fixed";
+        el.style.left = "-9999px";
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+      }
+      setCopyMessage(`Đã copy ${label}`);
+      setTimeout(() => setCopyMessage(null), 1500);
+    } catch (e) {
+      console.error("Không thể copy:", e);
+      setCopyMessage("Copy thất bại. Hãy bấm giữ để chọn thủ công.");
+      setTimeout(() => setCopyMessage(null), 1800);
+    }
+  };
+
+  const getPhoneTokenAndInfo = async () => {
+    setPhoneLoading(true);
+    setPhoneError(null);
+    setPhoneResult(null);
+
+    try {
+      // Quyền số điện thoại (Zalo 2026 vẫn yêu cầu xin trước khi lấy token)
+      await authorize({
+        scopes: ["scope.userInfo", "scope.userPhonenumber"],
+      });
+
+      const phoneRes: any = await getPhoneNumber();
+      // Theo doc zmp-sdk: getPhoneNumber() trả về `{ token }` (phone token) để exchange ở server.
+      const code = phoneRes?.token ?? phoneRes?.code ?? null;
+      if (!code) {
+        throw new Error(
+          "Không thấy trường `token`/`code` trong response của getPhoneNumber().",
+        );
+      }
+
+      console.log("PHONE_TOKEN_CUA_BAN (code):", code);
+      setPhoneResult({
+        code,
+        phoneResRaw: phoneRes,
+      });
+    } catch (e) {
+      console.error("Lỗi lấy phone info:", e);
+      setPhoneError(
+        (e as { message?: string })?.message ?? (e ? String(e) : "Unknown"),
+      );
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await authorize({
+          scopes: ["scope.userInfo", "scope.userPhonenumber"],
+        }).catch(() => {
+          // user từ chối hoặc lỗi môi trường — vẫn thử đọc userInfo/token
+        });
+
+        const [userInfo, accessToken] = await Promise.all([
+          getUserInfo({ avatarType: "normal" }).catch(() => null),
+          getAccessToken().catch(() => null),
+        ]);
+
+        const raw: any = userInfo ?? {};
+        if (!cancelled) {
+          setPayload({
+            ...raw,
+            accessToken: (accessToken as string | null) ?? null,
+          });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(
+            (e as { message?: string })?.message ??
+              (e ? String(e) : "Unknown error"),
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const json = error
+    ? { error, hint: "Hãy kiểm tra quyền truy cập thông tin người dùng." }
+    : payload;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="grid grid-cols-3 pt-4 pb-5">
-        {[
-          ["Điểm thưởng", 14],
-          ["Phiếu giảm giá", 2],
-          ["Buổi khám", 3],
-        ].map(([key, value]) => (
-          <div key={key} className="flex flex-col space-y-1.5 text-center">
-            <div className="text-xl font-bold text-primary-gradient">
-              {value}
-            </div>
-            <div className="text-disabled text-2xs">{key}</div>
-          </div>
-        ))}
+    <div className="flex-1 px-4 py-6 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <div className="text-base font-medium">Thông tin Zalo người dùng</div>
+        <div className="text-2xs text-disabled">
+          {loading ? "loading..." : json ? "done" : "idle"}
+        </div>
       </div>
-      <div className="flex-1 flex flex-col bg-white py-8 space-y-9 overflow-y-auto">
-        <Section title="Dịch vụ y tế" viewMore="/services">
-          <div className="grid grid-cols-4 pt-6 gap-2 text-center text-xs">
-            {[
-              { icon: prescription, label: "Toa thuốc" },
-              { icon: calendar, label: "Lịch hẹn" },
-              { icon: clipboard, label: "Lịch sử" },
-              { icon: heart, label: "Gia đình" },
-            ].map(({ icon, label }) => (
-              <div key={label} className="flex flex-col items-center gap-2">
-                <img src={icon} className="h-8 w-8" />
-                <div className="text-center">{label}</div>
-              </div>
-            ))}
-          </div>
-        </Section>
-        <Section title="Bác sĩ đã khám">
-          <div className="grid grid-cols-2 pt-6 space-x-4">
-            <VisitedDoctor doctor={d1} />
-            <VisitedDoctor doctor={d2} />
-          </div>
-        </Section>
-        <Section title="Khác">
-          <div className="pt-2">
-            <Action
-              label="Hóa đơn của tôi"
-              badge={3}
-              icon={<ArrowRightIcon className="h-3.5 w-3.5" />}
-              to="/invoices"
-            />
-            <Action
-              label="Gửi phản ảnh dịch vụ"
-              icon={<ArrowRightIcon className="h-3.5 w-3.5" />}
-              to="/feedback"
-            />
-            <Action
-              label="Thông tin bệnh viện"
-              icon={<ArrowRightIcon className="h-3.5 w-3.5" />}
-              to="/hospital-info"
-            />
-          </div>
-        </Section>
+
+      <button
+        type="button"
+        className="mt-3 w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white"
+        onClick={() => getMyToken()}
+      >
+        Thử cưỡng ép lấy token (authorize → getAccessToken)
+      </button>
+
+      <button
+        type="button"
+        className="mt-3 w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white"
+        onClick={() => void getPhoneTokenAndInfo()}
+        disabled={phoneLoading}
+      >
+        {phoneLoading ? "Đang lấy phone token..." : "Lấy phone token (code) từ getPhoneNumber"}
+      </button>
+
+      <div className="mt-4 rounded-xl bg-white border border-black/5 p-3">
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            className="rounded-md border border-black/10 px-2 py-1 text-xs"
+            onClick={() => void copyText(json, "user payload")}
+            disabled={loading}
+          >
+            Copy user payload
+          </button>
+        </div>
+        {loading ? (
+          <div className="text-sm text-disabled">Đang lấy dữ liệu...</div>
+        ) : (
+          <pre className="text-[11px] whitespace-pre-wrap break-words leading-relaxed text-foreground">
+            {JSON.stringify(json, null, 2)}
+          </pre>
+        )}
       </div>
+
+      <div className="mt-4 rounded-xl bg-white border border-black/5 p-3">
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            className="rounded-md border border-black/10 px-2 py-1 text-xs"
+            onClick={() => void copyText(phoneError ?? phoneResult ?? "", "phone result")}
+            disabled={!phoneError && !phoneResult}
+          >
+            Copy phone result
+          </button>
+        </div>
+        {phoneError ? (
+          <div className="text-sm text-red-600">{phoneError}</div>
+        ) : phoneResult ? (
+          <pre className="text-[11px] whitespace-pre-wrap break-words leading-relaxed text-foreground">
+            {JSON.stringify(phoneResult, null, 2)}
+          </pre>
+        ) : (
+          <div className="text-sm text-disabled">
+            Chưa có kết quả phone info. Bấm nút bên trên để lấy.
+          </div>
+        )}
+      </div>
+
+      {copyMessage ? (
+        <div className="mt-3 text-center text-xs text-disabled">{copyMessage}</div>
+      ) : null}
     </div>
   );
 }
-
-export default ProfilePage;

@@ -1,8 +1,8 @@
 {
-  "name": "my-doctor-app",
+  "name": "zmp-mini-app",
   "private": true,
   "version": "1.0.0",
-  "description": "zmp-blank-templates",
+  "description": "Zalo Mini App shell (theme + layout)",
   "repository": "",
   "license": "UNLICENSED",
   "browserslist": [
